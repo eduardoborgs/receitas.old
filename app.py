@@ -29,10 +29,10 @@ def load_data():
 
 df = load_data()
 
-# Título
+# Título principal
 st.title("🍽️ Banco de Receitas Sustentáveis")
 
-# Filtros
+# Filtros laterais
 with st.sidebar:
     st.header("🔍 Filtrar receitas")
     ingredientes = st.multiselect("🥦 Ingrediente Principal", sorted(df['ingrediente_principal'].dropna().unique()))
@@ -50,7 +50,7 @@ if nome_receita:
 
 st.markdown(f"### 📋 {len(filtered_df)} Receita(s) Encontrada(s)")
 
-# Função para gerar PDF
+# Função para gerar PDF da receita
 def gerar_pdf(row):
     pdf = FPDF()
     pdf.add_page()
@@ -80,8 +80,8 @@ def gerar_pdf(row):
     buffer.seek(0)
     return buffer
 
-# Exibição das receitas
-for _, row in filtered_df.iterrows():
+# Exibir receitas filtradas
+for index, row in filtered_df.iterrows():
     nome = row.get("nome_receita", "Receita sem nome")
     with st.expander(f"🍲 {nome}"):
         st.markdown(f"**Ingrediente Principal:** {row.get('ingrediente_principal', '')}")
@@ -97,5 +97,6 @@ for _, row in filtered_df.iterrows():
             label="📥 Baixar em PDF",
             data=pdf_file,
             file_name=f"{nome.replace(' ', '_')}.pdf",
-            mime="application/pdf"
+            mime="application/pdf",
+            key=f"download_{index}"  # chave única para evitar erro
         )
