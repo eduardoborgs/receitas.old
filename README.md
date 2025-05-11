@@ -1,2 +1,2 @@
-# receitas
+# receitas.old
 Receitas - Unifacs
