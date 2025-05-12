@@ -1,102 +1,59 @@
 import streamlit as st
-import pandas as pd
-from fpdf import FPDF
-from io import BytesIO
+import requests
 
-# Configuração da página
-st.set_page_config(page_title="Receitas Sustentáveis", layout="wide")
+st.set_page_config(page_title="Leitor de Receitas", page_icon="🍽️")
+st.title("📘 Leitor de Receitas PDF")
+st.write("Faça upload de um arquivo PDF de receitas e faça perguntas sobre ele!")
 
-# Função para limpar caracteres incompatíveis com fpdf
-def limpar_texto(texto):
-    if not isinstance(texto, str):
-        texto = str(texto)
-    return (
-        texto.replace("•", "-")
-        .replace("–", "-")
-        .replace("“", '"')
-        .replace("”", '"')
-        .replace("’", "'")
-        .replace("‘", "'")
-        .replace("…", "...")
-        .encode("latin1", "ignore")
-        .decode("latin1")
-    )
+# Upload do PDF
+uploaded_file = st.file_uploader("Escolha um arquivo PDF", type="pdf")
 
-# Carregar dados com cache
-@st.cache_data
-def load_data():
-    return pd.read_csv("receitas.csv")
-
-df = load_data()
-
-# Título principal
-st.title("🍽️ Banco de Receitas Sustentáveis")
-
-# Filtros laterais
-with st.sidebar:
-    st.header("🔍 Filtrar receitas")
-    ingredientes = st.multiselect("🥦 Ingrediente Principal", sorted(df['ingrediente_principal'].dropna().unique()))
-    autores = st.multiselect("👩‍🍳 Autor", sorted(df['autor'].dropna().unique()))
-    nome_receita = st.text_input("📌 Nome da Receita")
-
-# Aplicar filtros
-filtered_df = df.copy()
-if ingredientes:
-    filtered_df = filtered_df[filtered_df['ingrediente_principal'].isin(ingredientes)]
-if autores:
-    filtered_df = filtered_df[filtered_df['autor'].isin(autores)]
-if nome_receita:
-    filtered_df = filtered_df[filtered_df['nome_receita'].str.contains(nome_receita, case=False, na=False)]
-
-st.markdown(f"### 📋 {len(filtered_df)} Receita(s) Encontrada(s)")
-
-# Função para gerar PDF da receita
-def gerar_pdf(row):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    nome = limpar_texto(row.get("nome_receita", "Receita Sem Nome"))
-    pdf.cell(0, 10, nome, ln=True)
-
-    pdf.set_font("Arial", '', 12)
-    pdf.multi_cell(0, 10, limpar_texto(f"Ingrediente Principal: {row.get('ingrediente_principal', '')}"))
-    autor = limpar_texto(row.get('autor', ''))
-    if autor:
-        pdf.multi_cell(0, 10, f"Autor: {autor} ({limpar_texto(row.get('curso', ''))} - {limpar_texto(row.get('semestre', ''))})")
-
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Ingredientes:", ln=True)
-    pdf.set_font("Arial", '', 12)
-    pdf.multi_cell(0, 10, limpar_texto(row.get('ingredientes', '')))
-
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, "Modo de Preparo:", ln=True)
-    pdf.set_font("Arial", '', 12)
-    pdf.multi_cell(0, 10, limpar_texto(row.get('modo_de_preparo', '')))
-
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    buffer = BytesIO(pdf_bytes)
-    buffer.seek(0)
-    return buffer
-
-# Exibir receitas filtradas
-for index, row in filtered_df.iterrows():
-    nome = row.get("nome_receita", "Receita sem nome")
-    with st.expander(f"🍲 {nome}"):
-        st.markdown(f"**Ingrediente Principal:** {row.get('ingrediente_principal', '')}")
-        if row.get('autor', ''):
-            st.markdown(f"**Autor:** {row['autor']} ({row.get('curso', '')} - {row.get('semestre', '')})")
-        st.markdown("### Ingredientes")
-        st.write(row.get('ingredientes', ''))
-        st.markdown("### Modo de Preparo")
-        st.write(row.get('modo_de_preparo', ''))
-
-        pdf_file = gerar_pdf(row)
-        st.download_button(
-            label="📥 Baixar em PDF",
-            data=pdf_file,
-            file_name=f"{nome.replace(' ', '_')}.pdf",
-            mime="application/pdf",
-            key=f"download_{index}"  # chave única para evitar erro
+if uploaded_file:
+    with st.spinner("Enviando arquivo para a API..."):
+        files = {
+            'file': (uploaded_file.name, uploaded_file, 'application/pdf')
+        }
+        headers = {
+            'x-api-key': st.secrets["CHATPDF_API_KEY"]
+        }
+        response = requests.post(
+            'https://api.chatpdf.com/v1/sources/add-file',
+            headers=headers,
+            files=files
         )
+
+    if response.status_code == 200:
+        source_id = response.json()["sourceId"]
+        st.success("✅ Arquivo enviado com sucesso!")
+
+        # Campo de pergunta
+        st.subheader("🔍 Faça uma pergunta sobre o conteúdo")
+        question = st.text_input("Digite sua pergunta")
+
+        if question:
+            with st.spinner("Consultando a API..."):
+                payload = {
+                    "sourceId": source_id,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": question
+                        }
+                    ]
+                }
+                answer_response = requests.post(
+                    "https://api.chatpdf.com/v1/chats/message",
+                    headers=headers,
+                    json=payload
+                )
+
+                if answer_response.status_code == 200:
+                    answer = answer_response.json()["content"]
+                    st.markdown(f"**Resposta:** {answer}")
+                else:
+                    st.error("❌ Erro ao obter resposta da API.")
+    else:
+        st.error(f"❌ Erro ao enviar PDF: {response.text}")
+
+st.markdown("---")
+st.caption("Desenvolvido com ❤️ usando Streamlit")
